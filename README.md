@@ -48,5 +48,5 @@ Alternatively, you can paste the key directly into alerts.py (not recommended).
 
 ### 5. Run the script
 ```bash
-python3 alerts.py
+python3 ./fetch_historical_data.py
 ```
