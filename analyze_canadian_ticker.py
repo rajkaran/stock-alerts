@@ -44,13 +44,6 @@ price_5m_col = db["PriceFor5MinuteInterval"]
 daily_log_col = db["DailyLog"]
 exec_state_col = db["EveryExecutionState"]
 
-# Ensure we don't get duplicates
-# price_5m_col.create_index(
-#     [("ticker", ASCENDING), ("ts", ASCENDING)],
-#     unique=True,
-# )
-
-
 # ------------------- YFINANCE HELPERS --------------------
 
 def flatten_yf_columns(df: pd.DataFrame) -> pd.DataFrame:
