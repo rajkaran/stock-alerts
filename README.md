@@ -462,6 +462,7 @@ HTML email with a clean table: \
 cd /home/rajkaran/projects/stock_alerts
 source venv/bin/activate
 python email_canadian_signals.py
+python3 ./weekly_canadian_ticker.py 
 
 
 ---

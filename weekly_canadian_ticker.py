@@ -54,7 +54,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))  # default TLS port
 SMTP_USER = os.getenv("EMAIL_USER", "")
 SMTP_PASSWORD = os.getenv("EMAIL_PASS", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "no-reply@iamraj.com")
-EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Favorable stocks to invest on - ")
+EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Favorable stocks to invest on ")
 
 # ------------------- WEEK FIELD NAMES --------------------
 
@@ -520,7 +520,7 @@ def format_table_html(rows: List[Dict[str, Any]]) -> str:
     html = f"""
     <html>
       <body style="font-family: Arial, sans-serif; font-size: 14px;">
-        <p>Weekly minimum-price signals:</p>
+        <p>Here's the list of Stocks favorable to invest in at the moment:</p>
         <table style="border-collapse: collapse; border:1px solid #ccc;">
           <thead>
             <tr style="background-color:#f2f2f2;">
