@@ -54,12 +54,12 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))  # default TLS port
 SMTP_USER = os.getenv("EMAIL_USER", "")
 SMTP_PASSWORD = os.getenv("EMAIL_PASS", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "no-reply@iamraj.com")
-EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Tickers can be invested in - ")
+EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Favorable stocks to invest on - ")
 
 # ------------------- WEEK FIELD NAMES --------------------
 
 # These are the same week spans used in fetch_minimum_close_byweek_for_ticker
-WEEK_SPANS = [1, 2, 4, 6, 8, 9, 10, 11, 12, 13, 14]
+WEEK_SPANS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 
 # All possible week facet names saved into ExecutionComparedToWeekCanada
 WEEK_FIELDS = ["sinceThisWeek"] + [f"sincePast{w}Weeks" for w in WEEK_SPANS]
@@ -674,7 +674,7 @@ def run_base_analysis():
     
     # 2) Get min close by interval (facet result)
     min_by_interval = fetch_minimum_close_byweek_for_ticker()
-
+    
     # We want *descending* (oldest weeks first)
     ordered_week_keys = sorted(min_by_interval.keys(), key=week_sort_key, reverse=True)
 
@@ -730,15 +730,20 @@ def run_base_analysis():
     body_text = format_table_text(rows)
     body_html = format_table_html(rows)
 
+    # Build subject with execution date (local Toronto date)
+    now_local = datetime.now(TZ)
+    date_str = now_local.strftime("%Y-%m-%d")  # e.g. 2025-12-10
+    subject = f"{EMAIL_SUBJECT}{date_str}"
+
     # Fetch recipients
     recipients = get_notify_emails()
 
     # Send email
-    sent = send_email(recipients, EMAIL_SUBJECT, body_text, body_html)
+    sent = send_email(recipients, subject, body_text, body_html)
 
     # Log the email attempt if sent
     if sent:
-        log_email_send(recipients, EMAIL_SUBJECT, len(rows))
+        log_email_send(recipients, subject, len(rows))
     
     return rows
 
