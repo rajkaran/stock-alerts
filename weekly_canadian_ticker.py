@@ -576,7 +576,7 @@ def send_email(recipients: List[str], subject: str, body_text: str, body_html: s
         log.exception("Failed to send email: %s", e)
         return False
     
-def log_email_send(recipients: List[str], subject: str, row_count: int):
+def log_email_send(recipients: List[str], subject: str, row_count: int, insertedId: str = ""):
     """Insert a log entry into EmailLog."""
     now_utc = datetime.now(timezone.utc)
     doc = {
@@ -584,6 +584,7 @@ def log_email_send(recipients: List[str], subject: str, row_count: int):
         "subject": subject,
         "recipients": recipients,
         "rowCount": row_count,
+        "executionId": insertedId,
         "type": "weeklySignals",
     }
     email_log_col.insert_one(doc)
@@ -657,7 +658,6 @@ def filter_already_reported_week_signals(
 
     return filtered
 
-
 def run_base_analysis():
     """
     Base flow:
@@ -710,13 +710,13 @@ def run_base_analysis():
 
     log.info("=== Raw Analysis Results === %s", week_to_tickers)
 
-    # 4) filter out already reported tickers
+    # 4) Save to MongoDB
+    insertedId = save_week_execution(week_to_tickers)
+
+    # 5) filter out already reported tickers
     week_to_tickers = filter_already_reported_week_signals(week_to_tickers)
 
-    log.info("=== Filtered (new) Analysis Results === %s", week_to_tickers)
-
-    # 5) Save to MongoDB
-    save_week_execution(week_to_tickers)
+    log.info("=== Filtered (new) Analysis Results === %s", week_to_tickers)    
 
     # 6) Send out email if we have any matches
     rows = aggregate_week_matches(week_to_tickers)
@@ -743,7 +743,7 @@ def run_base_analysis():
 
     # Log the email attempt if sent
     if sent:
-        log_email_send(recipients, subject, len(rows))
+        log_email_send(recipients, subject, len(rows), insertedId)
     
     return rows
 
