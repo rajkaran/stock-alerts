@@ -392,7 +392,8 @@ def load_previously_reported_pairs() -> set[tuple[str, str]]:
             "createDatetime": {
                 "$gte": start_utc,
                 "$lt": end_utc,
-            }
+            },
+            "isNotified": True, # only consider notified entries
         },
         projection,
     )
@@ -711,19 +712,17 @@ def run_base_analysis():
     log.info("=== Raw Analysis Results === %s", week_to_tickers)
 
     # 5) filter out already reported tickers
-    week_to_tickers = filter_already_reported_week_signals(week_to_tickers)
+    filtered_week_to_tickers = filter_already_reported_week_signals(week_to_tickers)
 
-    # 4) Save to MongoDB
-    insertedId = save_week_execution(week_to_tickers)
+    log.info("=== Filtered (new) Analysis Results === %s", filtered_week_to_tickers)    
 
-    log.info("=== Filtered (new) Analysis Results === %s", week_to_tickers)    
-
-    # 6) Send out email if we have any matches
-    rows = aggregate_week_matches(week_to_tickers)
+    # 5) Send out email if we have any matches
+    rows = aggregate_week_matches(filtered_week_to_tickers)
 
     # Only send email if we have at least one row
     if not rows:
         log.info("No weekly signals to report; email will not be sent.")
+        save_week_execution(week_to_tickers)
         return
 
     # Format table for email
@@ -743,6 +742,9 @@ def run_base_analysis():
 
     # Log the email attempt if sent
     if sent:
+        # 4) Save to MongoDB
+        week_to_tickers['isNotified'] = True        
+        insertedId = save_week_execution(week_to_tickers)
         log_email_send(recipients, subject, len(rows), insertedId)
     
     return rows
