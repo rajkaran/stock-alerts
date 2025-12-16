@@ -710,11 +710,11 @@ def run_base_analysis():
 
     log.info("=== Raw Analysis Results === %s", week_to_tickers)
 
-    # 4) Save to MongoDB
-    insertedId = save_week_execution(week_to_tickers)
-
     # 5) filter out already reported tickers
     week_to_tickers = filter_already_reported_week_signals(week_to_tickers)
+
+    # 4) Save to MongoDB
+    insertedId = save_week_execution(week_to_tickers)
 
     log.info("=== Filtered (new) Analysis Results === %s", week_to_tickers)    
 
