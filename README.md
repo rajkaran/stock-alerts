@@ -10,10 +10,7 @@ Core scripts:
 
 * `fetch_historical_data.py` – **one-time (or occasional) bootstrap** of 5-minute history. \
 
-* `analyze_canadian_ticker.py` – **continuous ingestion + analytics** (runs every 2 minutes). \
-
-* `email_canadian_signals.py` – **signal aggregation + email** (runs 3× per trading day). \
-
+* `weekly_canadian_ticker.py` – **continuous ingestion + analytics** (runs every 2 minutes between 9-15 on weekdays). \
 
 
 ---
@@ -78,7 +75,7 @@ Singleton collection to track when we last fetched **yesterday’s 5-minute data
 ```
 
 
-Used by `analyze_canadian_ticker.py` to avoid fetching the same day multiple times.
+Used by `weekly_canadian_ticker.py` to avoid fetching the same day multiple times.
 
 
 ---
@@ -91,7 +88,7 @@ Used by `analyze_canadian_ticker.py` to avoid fetching the same day multiple tim
 ```
 
 
-Snapshot of **analysis results** for a single run of `analyze_canadian_ticker.py`.
+Snapshot of **analysis results** for a single run of `weekly_canadian_ticker.py`.
 
 Each document:
 
@@ -282,45 +279,9 @@ python fetch_historical_data.py
 
     * If last update date != today (in `TZ`), downloads **yesterday’s** 5-minute data for each ticker and upserts into `PriceFor5MinuteInterval`, then updates `DailyLog`. \
 
-2. **Compute rolling stats (per ticker)** from `PriceFor5MinuteInterval`: \
-
-    * Over last **30 days**: \
-
-        * `avgClose30` (average of `Close`) \
-
-        * `minLow30` (minimum of `Low`) \
-
-    * Over last **90 days**: \
-
-        * `avgClose90 \
-`
-        * `minLow90 \
-`
-3. **Fetch current price** for each ticker: \
-
-    * Uses `yfinance` with `period="1d"`, `interval="1m"`. \
-
-    * Takes the last non-NaN `Close` as current price. \
-
 4. **Run comparison rules** per ticker and write into `EveryExecutionState`: \
  \
- Fields in the execution document: \
-
-    * `lessThanAvg30` – `current &lt; avgClose30 \
-`
-    * `lessThanAvg90` – `current &lt; avgClose90 \
-`
-    * `lessThanMin30` – `current &lt; minLow30 \
-`
-    * `lessThanMin90` – `current &lt; minLow90 \
-`
-    * `lessThan80PctDiff30` – current price is below the 80%-towards-min band between `avgClose30` and `minLow30 \
-`
-    * `lessThan50PctDiff30` – below 50%-towards-min band (midpoint) \
-
-    * `lessThan80PctDiff90` – analogous for 90-day stats \
-
-    * `lessThan50PctDiff90` – analogous for 90-day stats \
+ Calculate if current price of a ticker is less that 1-14 weeks period. whatever number of week is less than goes to the final object tobe notified to user.
 
 
 For each rule, if a ticker passes it, an object is appended: \
@@ -361,42 +322,7 @@ python analyze_canadian_ticker.py
 
 
 1. **Fetch all <code>EveryExecutionState</code> documents created “today”** (using local TZ → UTC window). \
-
-2. **Aggregate tickers across today’s runs** for these fields: \
-
-    * `"lessThanMin90" \
-`
-    * `"lessThan80PctDiff90" \
-`
-    * `"lessThanMin30" \
-`
-3. For each `(field, ticker)` pair: \
-
-    * Keep the **minimum <code>price</code>** observed across all docs. \
-
-    * Keep the corresponding `compareWith`. \
-
-
-Outputs a list of rows like: \
- \
- `[`
-
-
-```
-  {
-    "ticker": "T.TO",
-    "field": "lessThan80PctDiff90",
-    "minPrice": 18.709999084472656,
-    "compareWith": 19.21003357487866
-  },
-  ...
-]
-
-```
-
-
-
-4. 
+ 
 5. **Format email**: \
 
     * Plain text fallback (simple pipe-separated lines). \
@@ -462,6 +388,7 @@ HTML email with a clean table: \
 cd /home/rajkaran/projects/stock_alerts
 source venv/bin/activate
 python email_canadian_signals.py
+python3 ./weekly_canadian_ticker.py 
 
 
 ---

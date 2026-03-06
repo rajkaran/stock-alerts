@@ -54,7 +54,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))  # default TLS port
 SMTP_USER = os.getenv("EMAIL_USER", "")
 SMTP_PASSWORD = os.getenv("EMAIL_PASS", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "no-reply@iamraj.com")
-EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Favorable stocks to invest on - ")
+EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Favorable stocks to invest on ")
 
 # ------------------- WEEK FIELD NAMES --------------------
 
@@ -392,7 +392,8 @@ def load_previously_reported_pairs() -> set[tuple[str, str]]:
             "createDatetime": {
                 "$gte": start_utc,
                 "$lt": end_utc,
-            }
+            },
+            "isNotified": True, # only consider notified entries
         },
         projection,
     )
@@ -520,7 +521,7 @@ def format_table_html(rows: List[Dict[str, Any]]) -> str:
     html = f"""
     <html>
       <body style="font-family: Arial, sans-serif; font-size: 14px;">
-        <p>Weekly minimum-price signals:</p>
+        <p>Here's the list of Stocks favorable to invest in at the moment:</p>
         <table style="border-collapse: collapse; border:1px solid #ccc;">
           <thead>
             <tr style="background-color:#f2f2f2;">
@@ -576,7 +577,7 @@ def send_email(recipients: List[str], subject: str, body_text: str, body_html: s
         log.exception("Failed to send email: %s", e)
         return False
     
-def log_email_send(recipients: List[str], subject: str, row_count: int):
+def log_email_send(recipients: List[str], subject: str, row_count: int, insertedId: str = ""):
     """Insert a log entry into EmailLog."""
     now_utc = datetime.now(timezone.utc)
     doc = {
@@ -584,6 +585,7 @@ def log_email_send(recipients: List[str], subject: str, row_count: int):
         "subject": subject,
         "recipients": recipients,
         "rowCount": row_count,
+        "executionId": insertedId,
         "type": "weeklySignals",
     }
     email_log_col.insert_one(doc)
@@ -657,7 +659,6 @@ def filter_already_reported_week_signals(
 
     return filtered
 
-
 def run_base_analysis():
     """
     Base flow:
@@ -710,20 +711,18 @@ def run_base_analysis():
 
     log.info("=== Raw Analysis Results === %s", week_to_tickers)
 
-    # 4) filter out already reported tickers
-    week_to_tickers = filter_already_reported_week_signals(week_to_tickers)
+    # 5) filter out already reported tickers
+    filtered_week_to_tickers = filter_already_reported_week_signals(week_to_tickers)
 
-    log.info("=== Filtered (new) Analysis Results === %s", week_to_tickers)
+    log.info("=== Filtered (new) Analysis Results === %s", filtered_week_to_tickers)    
 
-    # 5) Save to MongoDB
-    save_week_execution(week_to_tickers)
-
-    # 6) Send out email if we have any matches
-    rows = aggregate_week_matches(week_to_tickers)
+    # 5) Send out email if we have any matches
+    rows = aggregate_week_matches(filtered_week_to_tickers)
 
     # Only send email if we have at least one row
     if not rows:
         log.info("No weekly signals to report; email will not be sent.")
+        save_week_execution(week_to_tickers)
         return
 
     # Format table for email
@@ -743,7 +742,10 @@ def run_base_analysis():
 
     # Log the email attempt if sent
     if sent:
-        log_email_send(recipients, subject, len(rows))
+        # 4) Save to MongoDB
+        week_to_tickers['isNotified'] = True        
+        insertedId = save_week_execution(week_to_tickers)
+        log_email_send(recipients, subject, len(rows), insertedId)
     
     return rows
 
