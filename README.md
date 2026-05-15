@@ -620,3 +620,145 @@ You should see:
     * Use a “normal-looking” subject and content (you already do). \
 
     * Consider adding SPF/DKIM for your sending domain if you use a custom domain.
+
+
+
+# TradeCollection — Google Sheets Sync
+
+Incrementally syncs MongoDB `Trade` records to a Google Sheet.
+Uses `DailyLog` (_id = `trade-googlesheet`) as the cursor.
+
+## Files
+
+```
+TradeCollection/
+├── sync_trades.py        # the script
+├── .env                  # your secrets (never commit this)
+├── .env.example          # template
+├── service_account.json  # uploaded manually to server (never commit)
+└── README.md
+```
+
+---
+
+## Folder structure
+
+```
+TradeCollection/
+├── sync_core.py          # shared logic (both envs use this)
+├── sync_dev.py           # DEV runner
+├── sync_prod.py          # PROD runner
+├── .env.dev              # DEV secrets (git-ignored)
+├── .env.prod             # PROD secrets (git-ignored)
+├── service_account.json  # Google service account key (git-ignored)
+└── README.md
+```
+
+---
+
+## One-time Google Cloud setup
+
+1. Go to https://console.cloud.google.com
+2. Create or select a project
+3. Enable **Google Sheets API** and **Google Drive API**
+4. APIs & Services → Credentials → Create Credentials → **Service Account**
+5. Open the service account → Keys → Add Key → JSON → save as `service_account.json`
+6. **Create a blank Google Sheet manually** (the script cannot create a spreadsheet)
+   - Copy the Sheet ID from the URL:
+     `https://docs.google.com/spreadsheets/d/<SHEET_ID>/edit`
+7. Share the sheet with the `client_email` from `service_account.json` — give **Editor** access
+8. The tab (worksheet) inside the sheet is created automatically on first run
+
+> Does the sheet need to pre-exist? **Yes** — create it once manually.
+> The tab inside it? **No** — auto-created if missing.
+
+---
+
+## Setup
+
+```bash
+pip install pymongo gspread google-auth python-dotenv
+
+cp .env.dev.example .env.dev      # fill in your dev values
+cp .env.prod.example .env.prod    # fill in your prod values
+```
+
+---
+
+## DailyLog document
+
+The script reads and writes this document to track the sync cursor:
+
+```json
+{
+  "_id": "trade-googlesheet",
+  "lastUpdateDatetime": { "$date": "2026-05-14T13:00:11.695Z" }
+}
+```
+
+Insert it manually the first time (or let the script create it from epoch):
+
+```js
+// mongosh
+db.DailyLog.insertOne({
+  _id: "trade-googlesheet",
+  lastUpdateDatetime: new Date("2026-05-14T13:00:11.695Z")
+})
+```
+
+---
+
+## Running manually
+
+```bash
+cd TradeCollection
+
+# DEV
+python sync_dev.py
+
+# PROD
+python sync_prod.py
+```
+
+---
+
+## Crontab schedule
+
+4:30 EST = 09:30 UTC  
+4:30 IST = 23:00 UTC (previous calendar day)
+
+```cron
+# ── PROD ──────────────────────────────────────────────────────
+# 4:30 EST → 09:30 UTC
+30 9 * * * cd /path/to/TradeCollection && /usr/bin/python3 sync_prod.py >> /var/log/sync_prod.log 2>&1
+
+# 4:30 IST → 23:00 UTC
+0 23 * * * cd /path/to/TradeCollection && /usr/bin/python3 sync_prod.py >> /var/log/sync_prod.log 2>&1
+
+# ── DEV (optional, run once a day for testing) ─────────────────
+# 4:30 EST → 09:30 UTC
+30 9 * * * cd /path/to/TradeCollection && /usr/bin/python3 sync_dev.py >> /var/log/sync_dev.log 2>&1
+```
+
+To edit crontab:
+```bash
+crontab -e
+```
+
+---
+
+## How the cursor works
+
+1. Script reads `DailyLog.lastUpdateDatetime` for `_id = "trade-googlesheet"`
+2. Queries `Trade` where `createDatetime > lastUpdateDatetime`, sorted oldest-first
+3. Appends rows to Google Sheet
+4. Updates `DailyLog.lastUpdateDatetime` to the `createDatetime` of the last appended record
+
+---
+
+## Adding new fields to Trade
+
+Nothing to change. On next run the script will:
+- Detect any new field keys in the batch
+- Append new columns to the sheet header automatically
+- Fill in values for the new column going forward (old rows stay blank for that column)
