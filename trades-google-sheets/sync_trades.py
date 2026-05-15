@@ -51,7 +51,7 @@ DAILY_LOG_ID = "trade-googlesheet"
 # Any field NOT listed here is appended alphabetically after these.
 PREFERRED_COLUMN_ORDER = [
     "_id", "tickerId", "symbol", "rate", "quantity", "totalAmount", "brokerageFee",
-    "broker","tradeType", "isEdited", "isActive", "tradeDatetime", "createDatetime",
+    "broker","tradeType", "profit", "isEdited", "isActive", "tradeDatetime", "createDatetime",
 ]
 
 # Add any field names here that you never want written to the sheet
