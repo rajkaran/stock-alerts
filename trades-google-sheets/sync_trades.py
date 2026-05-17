@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 import gspread
@@ -50,8 +50,8 @@ DAILY_LOG_ID = "trade-googlesheet"
 # Preferred left-to-right column order in the sheet.
 # Any field NOT listed here is appended alphabetically after these.
 PREFERRED_COLUMN_ORDER = [
-    "_id", "tickerId", "symbol", "rate", "quantity", "totalAmount", "brokerageFee",
-    "broker","tradeType", "profit", "isEdited", "isActive", "tradeDatetime", "createDatetime",
+    "_id", "tickerId", "symbol", "rate", "quantity", "totalAmount", "brokerageFee", "broker",
+    "tradeType", "profit", "isEdited", "isActive", "tradeDatetime", "createDatetime", "weekStarting"
 ]
 
 # Add any field names here that you never want written to the sheet
@@ -84,10 +84,28 @@ def serialize(value) -> str:
     # Handles ObjectId, Decimal128, bool, int, float, str, etc.
     return str(value)
 
+def monday_of_week(dt: datetime) -> str:
+    """Return the Monday date of the week containing dt, as YYYY-MM-DD string."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    # weekday(): Monday=0, Sunday=6
+    monday = dt - timedelta(days=dt.weekday())
+    return monday.strftime("%Y-%m-%d")
 
 def flatten_record(doc: dict) -> dict[str, str]:
-    """Return a flat {field: str_value} dict, skipping SKIP_FIELDS."""
-    return {k: serialize(v) for k, v in doc.items() if k not in SKIP_FIELDS}
+    """Return a flat {field: str_value} dict, skipping SKIP_FIELDS.
+    Adds a computed `weekStarting` field (Monday date) for every record.
+    """
+    flat = {k: serialize(v) for k, v in doc.items() if k not in SKIP_FIELDS}
+ 
+    # Compute weekStarting from tradeDatetime if available
+    trade_dt = doc.get("tradeDatetime")
+    if isinstance(trade_dt, datetime):
+        flat["weekStarting"] = monday_of_week(trade_dt)
+    elif "weekStarting" not in flat:
+        flat["weekStarting"] = ""
+ 
+    return flat
 
 
 # ─────────────────────────── COLUMN MANAGEMENT ────────────────
