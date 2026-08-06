@@ -66,8 +66,8 @@ DAILY_LOG_ID = "movemoney-googlesheet"
 # Preferred left-to-right column order in the sheet.
 # Any field NOT listed here is appended alphabetically after these.
 PREFERRED_COLUMN_ORDER = [
-    "_id", "broker", "accountName", "operation", "amount", "currency",
-    "isActive", "lastUpdateDatetime", "weekStarting",
+    "_id", "broker", "accountName", "amount", "currency", "operation",
+    "isActive", "isEdited", "transferDatetime", "updateDatetime", "weekStarting", "createDatetime"
 ]
 
 # Add any field names here that you never want written to the sheet.
@@ -87,8 +87,8 @@ def flatten_record(doc: dict, broker_accounts: dict[str, dict]) -> dict[str, str
     """
     flat = {k: serialize(v) for k, v in doc.items() if k not in SKIP_FIELDS}
 
-    # Compute weekStarting from lastUpdateDatetime (MoveMoney has no other date field)
-    last_dt = doc.get("lastUpdateDatetime")
+    # Compute weekStarting from transferDatetime (MoveMoney has no other date field)
+    last_dt = doc.get("transferDatetime")
     if isinstance(last_dt, datetime):
         flat["weekStarting"] = monday_of_week(last_dt)
     elif "weekStarting" not in flat:
@@ -106,8 +106,8 @@ def flatten_record(doc: dict, broker_accounts: dict[str, dict]) -> dict[str, str
 def fetch_new_movemoney(db, since: datetime) -> list[dict]:
     return list(
         db["MoveMoney"].find(
-            {"lastUpdateDatetime": {"$gt": since}},
-            sort=[("lastUpdateDatetime", 1)],
+            {"createDatetime": {"$gt": since}},
+            sort=[("createDatetime", 1)],
         )
     )
 
