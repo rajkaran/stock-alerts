@@ -4,15 +4,12 @@ sync_movemoney.py
 Incrementally syncs MongoDB MoveMoney records to a Google Sheet
 ("MoveMoney" tab, same spreadsheet as sync_trades.py / sync_dividends.py).
 
-MoveMoney docs have no createDatetime — only `lastUpdateDatetime` — so that
-field is used as both the sort key and the sync cursor.
-
 - Reads  DailyLog { _id: "movemoney-googlesheet" }.lastUpdateDatetime as the cursor
-- Fetches MoveMoney records where lastUpdateDatetime > cursor  (oldest-first)
+- Fetches MoveMoney records where createDatetime > cursor  (oldest-first)
 - Resolves each record's brokerAccountId against the BrokerAccount collection
   to pull in `broker` and `accountName`
 - Appends new rows to the sheet; auto-creates any new columns
-- Updates the cursor to the lastUpdateDatetime of the last synced record
+- Updates the cursor to the createDatetime of the last synced record
 
 Shared sheet/cursor/column helpers live in sheet_sync_common.py (also used
 by sync_trades.py and sync_dividends.py).
@@ -66,8 +63,8 @@ DAILY_LOG_ID = "movemoney-googlesheet"
 # Preferred left-to-right column order in the sheet.
 # Any field NOT listed here is appended alphabetically after these.
 PREFERRED_COLUMN_ORDER = [
-    "_id", "broker", "accountName", "amount", "currency", "operation",
-    "isActive", "isEdited", "transferDatetime", "updateDatetime", "weekStarting", "createDatetime"
+    "_id", "broker", "accountName", "operation", "amount", "currency",
+    "isActive", "isEdited", "transferDatetime", "createDatetime", "updatedDatetime", "weekStarting",
 ]
 
 # Add any field names here that you never want written to the sheet.
@@ -87,10 +84,10 @@ def flatten_record(doc: dict, broker_accounts: dict[str, dict]) -> dict[str, str
     """
     flat = {k: serialize(v) for k, v in doc.items() if k not in SKIP_FIELDS}
 
-    # Compute weekStarting from transferDatetime (MoveMoney has no other date field)
-    last_dt = doc.get("transferDatetime")
-    if isinstance(last_dt, datetime):
-        flat["weekStarting"] = monday_of_week(last_dt)
+    # Compute weekStarting from transferDatetime if available
+    transfer_dt = doc.get("transferDatetime")
+    if isinstance(transfer_dt, datetime):
+        flat["weekStarting"] = monday_of_week(transfer_dt)
     elif "weekStarting" not in flat:
         flat["weekStarting"] = ""
 
@@ -149,12 +146,12 @@ def run():
     # 7. Append rows
     append_rows(ws, header, flat, log)
 
-    # 8. Advance cursor (lastUpdateDatetime doubles as the sync cursor here)
-    last_dt = records[-1].get("lastUpdateDatetime")
+    # 8. Advance cursor — must match the field fetch_new_movemoney queries/sorts on
+    last_dt = records[-1].get("createDatetime")
     if last_dt:
         update_cursor(db, DAILY_LOG_ID, last_dt, log)
     else:
-        log.warning("Last record has no lastUpdateDatetime — cursor not updated.")
+        log.warning("Last record has no createDatetime — cursor not updated.")
 
     log.info("Done.")
 
