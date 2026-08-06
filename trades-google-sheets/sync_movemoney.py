@@ -1,23 +1,26 @@
 """
-sync_trades.py
---------------
-Incrementally syncs MongoDB Trade records to a Google Sheet ("Trades" tab).
+sync_movemoney.py
+------------------
+Incrementally syncs MongoDB MoveMoney records to a Google Sheet
+("MoveMoney" tab, same spreadsheet as sync_trades.py / sync_dividends.py).
 
-- Reads  DailyLog { _id: "trade-googlesheet" }.lastUpdateDatetime as the cursor
-- Fetches Trade records where createDatetime > cursor  (oldest-first)
-- Resolves each trade's brokerAccountId against the BrokerAccount collection
-  to pull in `broker` and `accountName` (Ticker lookup is skipped — the
-  trade doc already carries `symbol` directly)
+MoveMoney docs have no createDatetime — only `lastUpdateDatetime` — so that
+field is used as both the sort key and the sync cursor.
+
+- Reads  DailyLog { _id: "movemoney-googlesheet" }.lastUpdateDatetime as the cursor
+- Fetches MoveMoney records where lastUpdateDatetime > cursor  (oldest-first)
+- Resolves each record's brokerAccountId against the BrokerAccount collection
+  to pull in `broker` and `accountName`
 - Appends new rows to the sheet; auto-creates any new columns
-- Updates the cursor to the createDatetime of the last synced record
+- Updates the cursor to the lastUpdateDatetime of the last synced record
 
 Shared sheet/cursor/column helpers live in sheet_sync_common.py (also used
-by sync_dividends.py).
+by sync_trades.py and sync_dividends.py).
 
 Schedule via cron — see README.md.
 
 Usage:
-    python sync_trades.py
+    python sync_movemoney.py
 
 Requirements:
     pip install pymongo gspread google-auth python-dotenv
@@ -55,17 +58,16 @@ TZ = ZoneInfo(os.getenv("TZ", "America/Toronto"))
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 MONGO_DB = os.getenv("MONGO_DB", "stockdb")
 
-GOOGLE_SHEET_TAB = os.getenv("GOOGLE_SHEET_TAB", "Trades")
+GOOGLE_SHEET_TAB = os.getenv("GOOGLE_MOVEMONEY_SHEET_TAB", "MoveMoney")
 
 # The DailyLog document that tracks how far we've synced
-DAILY_LOG_ID = "trade-googlesheet"
+DAILY_LOG_ID = "movemoney-googlesheet"
 
 # Preferred left-to-right column order in the sheet.
 # Any field NOT listed here is appended alphabetically after these.
 PREFERRED_COLUMN_ORDER = [
-    "_id", "tickerId", "symbol", "rate", "quantity", "totalAmount", "brokerageFee",
-    "broker", "accountName", "tradeType", "purpose", "reason", "profit",
-    "isEdited", "isActive", "tradeDatetime", "createDatetime", "weekStarting",
+    "_id", "broker", "accountName", "operation", "amount", "currency",
+    "isActive", "lastUpdateDatetime", "weekStarting",
 ]
 
 # Add any field names here that you never want written to the sheet.
@@ -73,7 +75,7 @@ PREFERRED_COLUMN_ORDER = [
 # raw ObjectId is dropped from the sheet output.
 SKIP_FIELDS: set[str] = {"brokerAccountId"}
 
-log = get_logger("sync_trades")
+log = get_logger("sync_movemoney")
 
 
 # ─────────────────────────── RECORD MAPPING ────────────────────
@@ -85,10 +87,10 @@ def flatten_record(doc: dict, broker_accounts: dict[str, dict]) -> dict[str, str
     """
     flat = {k: serialize(v) for k, v in doc.items() if k not in SKIP_FIELDS}
 
-    # Compute weekStarting from tradeDatetime if available
-    trade_dt = doc.get("tradeDatetime")
-    if isinstance(trade_dt, datetime):
-        flat["weekStarting"] = monday_of_week(trade_dt)
+    # Compute weekStarting from lastUpdateDatetime (MoveMoney has no other date field)
+    last_dt = doc.get("lastUpdateDatetime")
+    if isinstance(last_dt, datetime):
+        flat["weekStarting"] = monday_of_week(last_dt)
     elif "weekStarting" not in flat:
         flat["weekStarting"] = ""
 
@@ -101,11 +103,11 @@ def flatten_record(doc: dict, broker_accounts: dict[str, dict]) -> dict[str, str
     return flat
 
 
-def fetch_new_trades(db, since: datetime) -> list[dict]:
+def fetch_new_movemoney(db, since: datetime) -> list[dict]:
     return list(
-        db["Trade"].find(
-            {"createDatetime": {"$gt": since}},
-            sort=[("createDatetime", 1)],
+        db["MoveMoney"].find(
+            {"lastUpdateDatetime": {"$gt": since}},
+            sort=[("lastUpdateDatetime", 1)],
         )
     )
 
@@ -123,19 +125,19 @@ def run():
     since = get_cursor(db, DAILY_LOG_ID, log)
 
     # 2. Fetch new records
-    trades = fetch_new_trades(db, since)
-    log.info("%d new trade(s) found.", len(trades))
-    if not trades:
+    records = fetch_new_movemoney(db, since)
+    log.info("%d new move-money record(s) found.", len(records))
+    if not records:
         log.info("Nothing to sync.")
         return
 
     # 3. Resolve broker accounts referenced by this batch
-    account_ids = {t.get("brokerAccountId") for t in trades}
+    account_ids = {r.get("brokerAccountId") for r in records}
     broker_accounts = fetch_broker_accounts(db, account_ids)
     log.info("Resolved %d broker account(s).", len(broker_accounts))
 
     # 4. Flatten all records
-    flat = [flatten_record(t, broker_accounts) for t in trades]
+    flat = [flatten_record(r, broker_accounts) for r in records]
 
     # 5. All unique field names in this batch
     all_keys: set[str] = {k for rec in flat for k in rec}
@@ -147,12 +149,12 @@ def run():
     # 7. Append rows
     append_rows(ws, header, flat, log)
 
-    # 8. Advance cursor
-    last_dt = trades[-1].get("createDatetime")
+    # 8. Advance cursor (lastUpdateDatetime doubles as the sync cursor here)
+    last_dt = records[-1].get("lastUpdateDatetime")
     if last_dt:
         update_cursor(db, DAILY_LOG_ID, last_dt, log)
     else:
-        log.warning("Last record has no createDatetime — cursor not updated.")
+        log.warning("Last record has no lastUpdateDatetime — cursor not updated.")
 
     log.info("Done.")
 
